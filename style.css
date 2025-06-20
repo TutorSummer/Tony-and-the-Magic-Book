@@ -1,76 +1,205 @@
-/* style.css */
-body {
-  font-family: Arial, sans-serif;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background-color: #f4f4f4;
-  margin: 20px;
-}
+document.addEventListener('DOMContentLoaded', () => {
+    const storyList = document.getElementById('story-list');
+    const checkBtn = document.getElementById('check-btn');
+    const showAnswerBtn = document.getElementById('show-answer-btn');
+    const stepHintBtn = document.getElementById('step-hint-btn');
+    const resultDisplay = document.getElementById('result');
 
-h1 {
-  color: #333;
-  margin-bottom: 30px;
-}
+    // Define the correct order of story segments using their data-id
+    const correctOrder = ['1', '2', '3', '4', '5', '6', '7', '8'];
+    let currentHintStep = 0; // Tracks which hint step we are on
 
-.flashcard-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  justify-content: center;
-}
+    // Store the original story texts mapped by their data-id
+    const originalStoryTexts = {};
+    Array.from(storyList.children).forEach(li => {
+        originalStoryTexts[li.dataset.id] = li.querySelector('.story-text').textContent;
+    });
 
-.flashcard {
-  background-color: #fff;
-  width: 200px;
-  height: 150px;
-  border-radius: 10px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  perspective: 1000px; /* For 3D flip effect */
-  cursor: pointer;
-}
+    // --- Function to shuffle the story texts randomly ---
+    function shuffleStoryTexts() {
+        const items = Array.from(storyList.children);
+        // Remove any existing hint highlights before shuffling
+        items.forEach(item => item.classList.remove('hinted'));
 
-.flashcard-inner {
-  width: 100%;
-  height: 100%;
-  text-align: center;
-  transition: transform 0.6s;
-  transform-style: preserve-3d;
-  position: relative;
-}
+        // Get the current order of data-ids
+        const currentIds = items.map(item => item.dataset.id);
+        // Shuffle the data-ids to determine the new order of texts
+        const shuffledIds = [...currentIds].sort(() => Math.random() - 0.5);
 
-.flashcard.flipped .flashcard-inner {
-  transform: rotateY(180deg);
-}
+        // Assign shuffled texts to the list items based on the shuffledIds
+        items.forEach((li, index) => {
+            const originalIdForThisPosition = shuffledIds[index];
+            li.dataset.id = originalIdForThisPosition; // Update data-id to reflect new content
+            li.querySelector('input[type="number"]').value = ''; // Clear input field
+            li.querySelector('.story-text').textContent = originalStoryTexts[originalIdForThisPosition];
 
-.flashcard-front,
-.flashcard-back {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  backface-visibility: hidden; /* Hide the back of the card when not flipped */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5em;
-  padding: 10px;
-  box-sizing: border-box;
-}
+            // Re-trigger the entrance animation for each item
+            li.style.animation = 'none'; // Clear existing animation
+            void li.offsetWidth; // Force reflow
+            li.style.opacity = 0; // Reset opacity
+            li.style.transform = 'translateY(20px)'; // Reset transform
+            li.style.animation = `slideIn 0.5s forwards ${0.1 + index * 0.1}s`; // Reapply with staggered delay
+        });
 
-.flashcard-front {
-  background-color: #007bff;
-  color: white;
-  border-radius: 10px;
-}
+        currentHintStep = 0; // Reset hint step when shuffling
+        resultDisplay.textContent = ''; // Clear result message on shuffle
+        resultDisplay.classList.remove('correct', 'wrong');
+    }
 
-.flashcard-back {
-  background-color: #28a745;
-  color: white;
-  border-radius: 10px;
-  transform: rotateY(180deg);
-}
+    // --- Confetti Animation Function ---
+    function createConfetti() {
+        const confettiCount = 50;
+        for (let i = 0; i < confettiCount; i++) {
+            const confetti = document.createElement('div');
+            confetti.classList.add('confetti');
 
-.flashcard p {
-  margin: 0;
-  word-break: break-word; /* Ensures long words wrap */
-}
+            const startX = window.innerWidth / 2 + (Math.random() - 0.5) * 200;
+            const startY = 0;
+
+            const endX = (Math.random() - 0.5) * window.innerWidth * 1.5;
+            const endY = window.innerHeight * (0.8 + Math.random() * 0.2);
+
+            confetti.style.left = `${startX}px`;
+            confetti.style.top = `${startY}px`;
+            confetti.style.setProperty('--x', `${endX}px`);
+            confetti.style.setProperty('--y', `${endY}px`);
+
+            const size = 8 + Math.random() * 8;
+            confetti.style.width = `${size}px`;
+            confetti.style.height = `${size}px`;
+
+            confetti.style.transform = `rotate(${Math.random() * 360}deg)`;
+            confetti.style.animationDelay = `${Math.random() * 0.8}s`;
+
+            document.body.appendChild(confetti);
+
+            confetti.addEventListener('animationend', () => {
+                confetti.remove();
+            });
+        }
+    }
+    // --- End Confetti Function ---
+
+    // --- Hint Function (Step-by-step) ---
+    function giveStepHint() {
+        // Clear previous result message and highlight
+        resultDisplay.classList.remove('correct', 'wrong');
+        resultDisplay.textContent = '';
+        Array.from(storyList.children).forEach(li => li.classList.remove('hinted'));
+
+        if (currentHintStep >= correctOrder.length) {
+            resultDisplay.textContent = '✨ 모든 힌트를 다 받았어요! 힌트를 초기화하려면 페이지를 새로고침하세요.';
+            resultDisplay.classList.add('correct');
+            return;
+        }
+
+        const targetCorrectId = correctOrder[currentHintStep]; // The ID of the item that should be at this position
+        let foundItem = null;
+
+        // Find the li element that *currently holds* the story text corresponding to targetCorrectId
+        // We need to iterate through the current list items and check their `data-id`
+        Array.from(storyList.children).forEach(li => {
+            if (li.dataset.id === targetCorrectId) {
+                foundItem = li;
+            }
+        });
+
+        if (foundItem) {
+            // Set the correct number in the input field
+            foundItem.querySelector('input[type="number"]').value = currentHintStep + 1;
+
+            // Apply hint highlight animation
+            foundItem.classList.add("hinted");
+            setTimeout(() => {
+                foundItem.classList.remove("hinted");
+            }, 1500);
+
+            resultDisplay.textContent = `💡 힌트 ${currentHintStep + 1}단계: 이 항목에 올바른 번호가 입력되었습니다!`;
+            resultDisplay.classList.add('correct');
+            currentHintStep++;
+        } else {
+            resultDisplay.textContent = '힌트를 찾을 수 없습니다. 문제가 발생했습니다.';
+            resultDisplay.classList.add('wrong');
+        }
+    }
+    // --- End Hint Function ---
+
+    // --- Check Answer Button Logic ---
+    checkBtn.addEventListener('click', () => {
+        // Get the current order of items based on their input values
+        const items = Array.from(storyList.children);
+        const userOrder = [];
+        let isValid = true;
+        const enteredNumbers = new Set(); // To check for duplicate numbers
+
+        items.forEach(li => {
+            const input = li.querySelector('input[type="number"]');
+            const value = parseInt(input.value, 10);
+
+            if (isNaN(value) || value < 1 || value > 8 || enteredNumbers.has(value)) {
+                isValid = false; // Invalid input or duplicate number
+                return;
+            }
+            enteredNumbers.add(value);
+            // Store { number: data-id } pairs
+            userOrder.push({ number: value, id: li.dataset.id });
+        });
+
+        // Clear previous result display styles and text
+        resultDisplay.classList.remove('correct', 'wrong');
+        resultDisplay.textContent = '';
+        Array.from(storyList.children).forEach(li => li.classList.remove('hinted'));
+
+        if (!isValid || userOrder.length !== correctOrder.length) {
+            resultDisplay.textContent = '😅 번호를 1부터 8까지 중복 없이 모두 입력했는지 확인해주세요!';
+            resultDisplay.classList.add('wrong');
+            return;
+        }
+
+        // Sort the user's input by the number they entered
+        userOrder.sort((a, b) => a.number - b.number);
+
+        // Compare the sorted user order (by data-id) with the correctOrder
+        const isCorrect = userOrder.every((item, index) => item.id === correctOrder[index]);
+
+        if (isCorrect) {
+            resultDisplay.textContent = '🎉 정답입니다! 멋져요!';
+            resultDisplay.classList.add('correct');
+            createConfetti();
+            currentHintStep = 0;
+        } else {
+            resultDisplay.textContent = '😅 순서가 틀렸어요. 다시 시도해보세요!';
+            resultDisplay.classList.add('wrong');
+        }
+    });
+
+    // --- Show Answer Button Logic ---
+    showAnswerBtn.addEventListener('click', () => {
+        const items = Array.from(storyList.children);
+        // Create a map from data-id to the actual li element
+        const itemMap = {};
+        items.forEach(li => itemMap[li.dataset.id] = li);
+
+        // Remove any existing hint highlights
+        Array.from(storyList.children).forEach(li => li.classList.remove('hinted'));
+
+        // Set the correct number in each input field
+        correctOrder.forEach((correctId, index) => {
+            const li = itemMap[correctId]; // Get the li element by its correct data-id
+            if (li) {
+                li.querySelector('input[type="number"]').value = index + 1;
+            }
+        });
+
+        resultDisplay.textContent = '🪄 정답 순서로 번호가 입력되었어요!';
+        resultDisplay.classList.remove('wrong');
+        resultDisplay.classList.add('correct');
+        currentHintStep = 0;
+    });
+
+    // --- Hint Button Event Listener ---
+    stepHintBtn.addEventListener('click', giveStepHint);
+
+    // --- Initial setup when the page loads ---
+    shuffleStoryTexts(); // Shuffle the story texts to start the puzzle
+});
